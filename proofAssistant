@@ -1,0 +1,175 @@
+this is a pde proof completer based on nanogpt whilst using sympy math library . enjoy and feel free to ping me with any feedback! looking to expand in the future to solve pdes (which requires use of some microsoft build c++ tools, so will take some time to become proficient) . thanks!
+
+import torch
+import torch.nn as nn
+from torch.nn import functional as F
+from sympy import symbols, Function, Eq, diff, integrate, solve
+from sympy.vector import gradient, laplacian
+
+# configuration for the model
+class ModelConfig:
+    vocab_size = 512  # for math symbols, operators,    etc.
+    block_size =    128  # context length
+    n_layer = 8  # transformer layers
+    n_head = 8  # attention heads
+    n_embd = 512  # embedding     size
+    dropout = 0.1  # dropout rate for regularization
+    learning_rate =     1e-4  # how fast the model learns
+    max_iters =     5000  # total training      iterations
+    batch_size = 16  # number of samples per batch
+
+config = ModelConfig()
+
+# tokenizer for math symbols
+def make_tokenizer():
+    # including symbols like LaTeX math stuff, PDE terms, etc.
+    chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789=+-*/^∂∇(),{}[]|<>π∫∂u/∂t ∇²u"
+    unique_chars = sorted(set(chars))
+    str_to_idx = {c: i for i, c in enumerate(unique_chars)} 
+    idx_to_str = {i: c for i, c in enumerate(unique_chars)}
+    return str_to_idx, idx_to_str, len(unique_chars)
+
+str_to_idx, idx_to_str, vocab_size = make_tokenizer()
+
+def encode_string(seq):
+    return [str_to_idx[c] for c in seq if c in str_to_idx]
+
+def decode_string(indices):
+    return ''.join([idx_to_str[i] for i in indices])
+
+# some example pde data (for training)
+def make_pde_dataset():
+    examples = [
+        # training examples for solving pdes
+        "∂u/∂t = ∇²u, BC: u(0,t)=0, solve for u(x,t)",
+        "∂²u/∂x² = f(x), IC: u(0)=0, solve for u(x)",
+        "∂²u/∂x² + ∂²u/∂y² = 0, solve for u(x,y)",
+        "∇²u = 0, solve for u(x,y,z) with u|_S = 0",
+    ]
+    return torch.tensor([encode_string(e) for e in examples])
+
+dataset = make_pde_dataset()
+
+# gpt transformer model for solving pdes
+class GPTModel(nn.Module):
+    def __init__(self, cfg):
+        super().__init__()
+        self.token_embed = nn.Embedding(cfg.vocab_size, cfg.n_embd)
+        self.pos_embed = nn.Embedding(cfg.block_size, cfg.n_embd)
+        self.transformer = nn.Sequential(
+            *[TransformerLayer(cfg) for _ in range(cfg.n_layer)]
+        )
+        self.ln_final = nn.LayerNorm(cfg.n_embd)
+        self.output_head = nn.Linear(cfg.n_embd, cfg.vocab_size)
+
+    def forward(self, inputs, targets=None):
+        B, T = inputs.shape
+        token_embeddings = self.token_embed(inputs)
+        pos_embeddings = self.pos_embed(torch.arange(T, device=inputs.device))
+        x = token_embeddings + pos_embeddings
+        x = self.transformer(x)
+        x = self.ln_final(x)
+        logits = self.output_head(x)
+
+        loss = None
+        if targets is not None:
+            logits_flat = logits.view(-1, logits.size(-1))
+            targets_flat = targets.view(-1)
+            loss = F.cross_entropy(logits_flat, targets_flat)
+        return logits, loss
+
+    def generate(self, start_idx, max_tokens):
+        for _ in range(max_tokens):
+            idx_cond = start_idx[:, -config.block_size :]
+            logits, _ = self(idx_cond)
+            logits = logits[:, -1, :]
+            probs = F.softmax(logits, dim=-1)
+            next_token = torch.multinomial(probs, num_samples=1)
+            start_idx = torch.cat((start_idx, next_token), dim=1)
+        return start_idx
+
+class TransformerLayer(nn.Module):
+    def __init__(self, cfg):
+        super().__init__()
+        self.attn = nn.MultiheadAttention(cfg.n_embd, cfg.n_head, dropout=cfg.dropout)
+        self.ffn = nn.Sequential(
+            nn.Linear(cfg.n_embd, 4 * cfg.n_embd),
+            nn.ReLU(),
+            nn.Linear(4 * cfg.n_embd, cfg.n_embd),
+        )
+        self.ln1 = nn.LayerNorm(cfg.n_embd)
+        self.ln2 = nn.LayerNorm(cfg.n_embd)
+
+    def forward(self, x):
+        attn_output, _ = self.attn(x, x, x)
+        x = x + self.ln1(attn_output)
+        ffn_output = self.ffn(x)
+        x = x + self.ln2(ffn_output)
+        return x
+
+# helper to solve pde proofs
+def solve_pde_with_sympy(pde, context):
+    we will be using sympy to help solve or complete proofs for common pdes... more pdes to be added. 
+    """
+    x, y, z, t = symbols('x y z t')  # time and space vars
+    u = Function('u')(x, t)         # dependent var
+    f = Function('f')(x)            # forcing        function
+
+    if pde == "∂u/∂t = ∇²u":
+        print("solving the heat equation: ∂u/∂t = ∇²u")
+        eq = Eq(diff(u, t), diff(u, x, x))  # heat eq
+        # separate variables: assume u(x, t) = X(x)T(t)
+        X = Function('X')(x)
+        T = Function('T')(t)
+        separation = Eq(u, X * T)
+        lhs = diff(separation.lhs, t) / T  # T'(t)/T(t)
+        rhs = diff(separation.rhs, x, x) / X  # X''(x)/X(x)
+        sep_eq = Eq(lhs, rhs)
+        return f"separated equation: {sep_eq}"
+
+    elif pde == "∂²u/∂x² = f(x)":
+        print("solving poisson equation: ∂²u/∂x² = f(x)")
+        eq = Eq(diff(u, x, x), f)  # poisson eq
+        solution = integrate(f, x, x) + symbols('C1') * x + symbols('C2')
+        return f"solution to poisson eq: u(x) = {solution}"
+
+    elif pde == "∇²u = 0":
+        print("solving laplace's equation: ∇²u = 0")
+        u_xyz = Function('u')(x, y, z)  # extend to 3d
+        laplace_eq = Eq(laplacian(u_xyz), 0)
+        # separable solution: u(x, y, z) = X(x)Y(y)Z(z)
+        X = Function('X')(x)
+        Y = Function('Y')(y)
+        Z = Function('Z')(z)
+        sep_sol = Eq(u_xyz, X * Y * Z)
+        return f"separable solution: {sep_sol}"
+
+    else:
+        return "pde proof not implemented!"
+
+# training the model
+def train_model(model, data, cfg):
+    opt = torch.optim.AdamW(model.parameters(), lr=cfg.learning_rate)
+    for it in range(cfg.max_iters):
+        idx = torch.randint(0, data.size(0), (cfg.batch_size,))
+        batch = data[idx]
+        input_batch = batch[:, :-1].to('cuda')
+        target_batch = batch[:, 1:].to('cuda')
+
+        logits, loss = model(input_batch, target_batch)
+        opt.zero_grad()
+        loss.backward()
+        opt.step()
+
+        if it % 100 == 0:  # log every 100 steps
+            print(f"iteration {it}: loss = {loss.item()}")
+
+# initialize the model and start training
+model = GPTModel(config).to('cuda')
+train_model(model, dataset, config)
+
+# generating proof completions
+start_seq = torch.tensor([[str_to_idx['∂']], [str_to_idx['u']], [str_to_idx['/']]], device='cuda')
+generated_seq = model.generate(start_seq, max_tokens=50)
+decoded_result = decode_string(generated_seq[0].tolist())
+print(f"generated proof: {decoded_result}")
