@@ -3,7 +3,7 @@ long story of the project: project that came out of work on an automated proof a
 
 the book Building LLMs for production by Bouchard and Peters was invaluable in this regard for learning LLM implementation. 
 
-a citation that cannot be understated: this implementation is a variation on karpathy's implementation of nanogpt -which in its own words, prefers "teeth over education". 
+a citation that cannot be understated: this implementation is a variation (excluding the sympy library usage, which was  my own design) on karpathy's implementation of nanogpt -which in its own words, prefers "teeth over education". 
 
 this is a work in progress.... currently comparable to gpt2
 
