@@ -114,6 +114,7 @@ def solve_pde_with_sympy(pde, context):
     x, y, z, t = symbols('x y z t')  # time and space vars
     u = Function('u')(x, t)         # dependent var
     f = Function('f')(x)            # forcing        function
+    c = symbols('c')            # wave speed
 
     if pde == "∂u/∂t = ∇²u":
         print("solving the heat equation: ∂u/∂t = ∇²u")
@@ -143,6 +144,15 @@ def solve_pde_with_sympy(pde, context):
         Z = Function('Z')(z)
         sep_sol = Eq(u_xyz, X * Y * Z)
         return f"separable solution: {sep_sol}"
+    elif pde == "∂²u/∂t² = c²∇²u":
+        print("solving the wave equation: ∂²u/∂t² = c²∇²u")
+        eq = Eq(diff(u, t, t), c**2 * diff(u, x, x))  # wave eq
+        # d'Alembert's solution form for 1D wave equation
+        f = Function('f')(x)  # initial displacement
+        g = Function('g')(x)  # initial velocity
+        # General solution form: u(x,t) = F(x+ct) + G(x-ct)
+        return f"wave equation solution form: u(x,t) = F(x+ct) + G(x-ct), where F and G are determined by initial conditions"
+
 
     else:
         return "pde proof not implemented!"
