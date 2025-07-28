@@ -45,6 +45,7 @@ def make_pde_dataset():
         "∂²u/∂x² = f(x), IC: u(0)=0, solve for u(x)",
         "∂²u/∂x² + ∂²u/∂y² = 0, solve for u(x,y)",
         "∇²u = 0, solve for u(x,y,z) with u|_S = 0",
+        "∂²u/∂t² = c²∇²u, IC: u(x,0)=f(x), solve for u(x,t)",
     ]
     return torch.tensor([encode_string(e) for e in examples])
 
@@ -152,7 +153,6 @@ def solve_pde_with_sympy(pde, context):
         g = Function('g')(x)  # initial velocity
         # General solution form: u(x,t) = F(x+ct) + G(x-ct)
         return f"wave equation solution form: u(x,t) = F(x+ct) + G(x-ct), where F and G are determined by initial conditions"
-
 
     else:
         return "pde proof not implemented!"
